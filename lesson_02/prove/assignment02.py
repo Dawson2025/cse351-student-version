@@ -1,7 +1,7 @@
 """
 Course    : CSE 351
 Assignment: 02
-Student   : <your name here>
+Student   : Dawson Packer
 
 Instructions:
     - review instructions in the course
@@ -31,7 +31,14 @@ def main():
 
     bank = Bank()
 
-    # TODO - Add a ATM_Reader for each data file
+    threads = []
+    for filename in data_files:
+        reader = ATM_Reader(filename, bank)
+        reader.start()
+        threads.append(reader)
+
+    for reader in threads:
+        reader.join()
 
     test_balances(bank)
 
@@ -39,21 +46,91 @@ def main():
 
 
 # ===========================================================================
-class ATM_Reader():
-    # TODO - implement this class here
-    ...
+class ATM_Reader(threading.Thread):
+    """Thread that processes a single ATM transaction file."""
+
+    def __init__(self, filename, bank):
+        super().__init__()
+        self.filename = filename
+        self.bank = bank
+
+    def run(self):
+        with open(self.filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+
+                parts = [part.strip() for part in line.split(',')]
+                if len(parts) != 3:
+                    continue
+
+                account_number = int(parts[0])
+                transaction_type = parts[1].lower()
+                amount = Money(parts[2])
+
+                if transaction_type == 'd':
+                    self.bank.deposit(account_number, amount)
+                elif transaction_type == 'w':
+                    self.bank.withdraw(account_number, amount)
 
 
 # ===========================================================================
-class Account():
-    # TODO - implement this class here
-    ...
+class Account:
+    """Represents a single bank account with a thread-safe balance."""
+
+    def __init__(self):
+        self.balance = Money('0.00')
+        self._lock = threading.Lock()
+
+    def deposit(self, amount):
+        if not isinstance(amount, Money):
+            amount = Money(str(amount))
+        with self._lock:
+            self.balance.add(amount)
+
+    def withdraw(self, amount):
+        if not isinstance(amount, Money):
+            amount = Money(str(amount))
+        with self._lock:
+            self.balance.sub(amount)
+
+    def get_balance(self):
+        with self._lock:
+            return Money(self.balance.digits)
 
 
 # ===========================================================================
-class Bank():
-    # TODO - implement this class here
-    ...
+class Bank:
+    """Manages accounts and coordinates thread-safe transactions."""
+
+    def __init__(self):
+        self.accounts = {}
+        self._accounts_lock = threading.Lock()
+
+    def _get_or_create_account(self, account_number):
+        account_number = int(account_number)
+        with self._accounts_lock:
+            account = self.accounts.get(account_number)
+            if account is None:
+                account = Account()
+                self.accounts[account_number] = account
+        return account
+
+    def deposit(self, account_number, amount):
+        account = self._get_or_create_account(account_number)
+        account.deposit(amount)
+
+    def withdraw(self, account_number, amount):
+        account = self._get_or_create_account(account_number)
+        account.withdraw(amount)
+
+    def get_balance(self, account_number):
+        with self._accounts_lock:
+            account = self.accounts.get(int(account_number))
+        if account is None:
+            return Money('0.00')
+        return account.get_balance()
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +218,8 @@ def test_balances(bank):
 
 
 
+
 if __name__ == "__main__":
     main()
+
 

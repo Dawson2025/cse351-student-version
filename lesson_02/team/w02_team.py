@@ -42,15 +42,58 @@ from cse351 import *
 # global
 call_count = 0
 
+
+class URLFetcher(threading.Thread):
+    """Thread that fetches a single URL from the server and stores the name.
+
+    Usage:
+        t = URLFetcher(url)
+        t.start()
+        t.join()
+        name = t.get_name()
+    """
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self.name = None
+        self._error = None
+
+    def run(self):
+        global call_count
+        try:
+            item = get_data_from_server(self.url)
+            call_count += 1
+            # some items may not have a 'name' key (e.g., films), fall back to title
+            self.name = item.get('name') or item.get('title')
+        except Exception as e:
+            self._error = e
+
+    def get_name(self):
+        if self._error:
+            raise self._error
+        return self.name
+
 def get_urls(film6, kind):
     global call_count
 
     urls = film6[kind]
     print(kind)
-    for url in urls:
-        call_count += 1
-        item = get_data_from_server(url)
-        print(f'  - {item["name"]}')
+
+    # create one thread per URL
+    threads = [URLFetcher(url) for url in urls]
+
+    # start all threads
+    for t in threads:
+        t.start()
+
+    # join all threads and print results
+    for t in threads:
+        t.join()
+        try:
+            name = t.get_name()
+        except Exception as e:
+            name = f'<error: {e}>'
+        print(f'  - {name}')
 
 def main():
     global call_count

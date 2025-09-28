@@ -45,6 +45,17 @@ def is_prime(n):
     return True
 
 
+def process_range(start, end):
+    """Process a range of numbers to find primes"""
+    global prime_count
+    global numbers_processed
+    
+    for i in range(start, end):
+        numbers_processed += 1
+        if is_prime(i):
+            prime_count += 1
+            print(i, end=', ', flush=True)
+
 def main():
     global prime_count                  # Required in order to use a global variable
     global numbers_processed            # Required in order to use a global variable
@@ -55,11 +66,15 @@ def main():
     start = 10000000000
     range_count = 100000
     numbers_processed = 0
-    for i in range(start, start + range_count):
-        numbers_processed += 1
-        if is_prime(i):
-            prime_count += 1
-            print(i, end=', ', flush=True)
+    prime_count = 0  # Reset prime count
+    
+    # Create and start one thread
+    t = threading.Thread(target=process_range, args=(start, start + range_count))
+    t.start()
+    
+    # Wait for the thread to finish
+    t.join()
+    
     print(flush=True)
 
     # Should find 4306 primes
