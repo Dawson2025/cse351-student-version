@@ -74,3 +74,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def worker(que):
+    while True:
+        url = que.get()
+        if url is None:
+            break
+        data = get_data_from_server(url)   # provided helper
+        print(f"  - {data['name']}")
