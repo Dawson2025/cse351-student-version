@@ -1,0 +1,13 @@
+Also, somebody asked me a question saying that they are confused by the assignment and can't figure out how to use the data files. Please explain how. They are saying that they tried checking on Discord with somebody to figure out what to do, and the person said to just call the server, but it keeps returning none. Then it keeps deadlocking for all of the semaphores on their end. this is a problem happening in their code not mine. but you can use the way that our code works correctly to explain what this person needs to do in order for them to get their code to work correctly. 
+
+
+Fire up the local server first. Pop open a terminal in lesson_04/prove, run python3 server.py, and leave it running. No server means every /record/... call comes back None, so nothing else works.
+Start your client only after the server’s up. First line of business: get_data_from_server(f"{TOP_API_URL}/start"). That tells the server to load those JSON weather files so later requests actually return data.
+Check whats available in the server. Loop through CITIES, call get_data_from_server(f"{TOP_API_URL}/city/{name}"), and stash the records count for each. That’s your roadmap—you’ll queue jobs from 0 to records - 1.
+Build the queues. Use queue.Queue(maxsize=10) for both command and result queues. Let main fill the command queue with tuples like ("sandiego", 123) so the fetch threads always know which record to ask for.
+Spin up the fetch threads. Each one does city, recno = command_queue.get(), hits /record/{city}/{recno}, drops the (city, recno, date, temp) onto the result queue, then calls command_queue.task_done(). If request fails, reconnect and retry; don’t just swallow the error.
+Give the workers the result queue. They grab (city, recno, date, temp), stash it in NOAA, call task_done(), and loop. Keep them running until they pull a sentinel.
+Signal clean shutdowns. After pushing every command, enqueue one None per fetch thread so they exit like they're supposed to. Once fetchers finish, do the same for the workers—drop one None per worker on the result queue.
+Let the main thread wait things out: command_queue.join() → thread.join() for fetchers → data_queue.join() → worker.join(). That sequencing keeps semaphores happy and prevents deadlock.
+Only after everyone’s done, call get_data_from_server(f"{TOP_API_URL}/end"). That shuts the server and gives you the totals.
+If you still see None, log the exact URL and status code—it almost always means the server wasn’t started or the path was mistyped. Fix that and the semaphores should stop being dumb all the time.
