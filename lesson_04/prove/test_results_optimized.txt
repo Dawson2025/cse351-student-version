@@ -1,0 +1,30 @@
+17:08:06| Run time:  = 58.10170987
+Retrieving city details
+           City: Records
+===================================
+       sandiego: Records = 10,000
+   philadelphia: Records = 10,000
+    san_antonio: Records = 10,000
+       san_jose: Records = 10,000
+       new_york: Records = 10,000
+        houston: Records = 10,000
+         dallas: Records = 10,000
+        chicago: Records = 10,000
+    los_angeles: Records = 10,000
+        phoenix: Records = 10,000
+===================================
+{'status': 'OK', 'api': 50012, 'threads': 190, 'total_time': 58.083660364151, 'calls_per_second': 861.0338895044432}
+
+NOAA Results: Verifying Results
+===================================
+       sandiego: 14.5004    PASSED
+   philadelphia: 14.865     PASSED
+    san_antonio: 14.638     PASSED
+       san_jose: 14.5756    PASSED
+       new_york: 14.6472    PASSED
+        houston: 14.591     PASSED
+         dallas: 14.835     PASSED
+        chicago: 14.6584    PASSED
+    los_angeles: 15.2346    PASSED
+        phoenix: 12.4404    PASSED
+===================================

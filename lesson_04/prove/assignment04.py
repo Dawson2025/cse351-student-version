@@ -25,84 +25,99 @@ from common import *
 
 from cse351 import *
 
-THREADS = 160
-WORKERS = 10
+REQUEST_THREAD_COUNT = 200
+WORKER_THREAD_COUNT = 10
 RECORDS_TO_RETRIEVE = 5000  # Don't change
 
 
 # ---------------------------------------------------------------------------
-def retrieve_weather_data(command_queue, data_queue):
-    session = requests.Session()
-
+def retrieve_weather_data(request_queue, response_queue):
+    """Fetch records from the server and place them on the response queue."""
+    
     while True:
-        command = command_queue.get()
+        command = request_queue.get()
+        # Check for stop signal
         if command is None:
-            command_queue.task_done()
+            request_queue.task_done()
             break
 
         city, record_no = command
-        try:
-            response = session.get(f'{TOP_API_URL}/record/{city}/{record_no}', timeout=10)
-            response.raise_for_status()
-            payload = response.json()
-        except requests.RequestException:
-            payload = get_data_from_server(f'{TOP_API_URL}/record/{city}/{record_no}')
-
+        
+        # Get the weather data from server
+        url = f'{TOP_API_URL}/record/{city}/{record_no}'
+        payload = get_data_from_server(url)
+        
+        # Put the data on response queue for workers to process
         if payload is not None:
-            data_queue.put((payload['city'], payload['date'], payload['temp']))
+            # Send tuple with city, date, and temp
+            response_queue.put((payload['city'], payload['date'], payload['temp']))
+        # else:
+        #     print(f'Failed to get data for {city} record {record_no}')
 
-        command_queue.task_done()
-
-    session.close()
+        request_queue.task_done()
 
 
 # ---------------------------------------------------------------------------
 class Worker(threading.Thread):
 
-    def __init__(self, name, data_queue, noaa):
+    def __init__(self, name, response_queue, noaa):
         super().__init__(name=name)
-        self._queue = data_queue
+        self._queue = response_queue
         self._noaa = noaa
 
     def run(self):
         while True:
-            item = self._queue.get()
-            if item is None:
+            record = self._queue.get()
+            if record is None:
                 self._queue.task_done()
                 break
-            city, date, temp = item
+            
+            # Process the record
+            city, date, temp = record
+            # print(f'{self.name}: Processing {city} - {date}')  # Used this for debugging
             self._noaa.add_record(city, date, temp)
             self._queue.task_done()
 
 
 # ---------------------------------------------------------------------------
 class NOAA:
+    """Accumulator for per-city temperature data."""
 
     def __init__(self):
-        self._data = {
-            city: {'records': [], 'temp_sum': 0.0, 'lock': threading.Lock()}
-            for city in CITIES
-        }
+        # Dictionary to store all city data
+        # Each city will have a list of records and a running total of temps
+        self._city_data = {}
+        for city in CITIES:
+            self._city_data[city] = {'records': [], 'total_temp': 0.0}
+        
+        # Lock to protect the data (had issues with race conditions before adding this)
+        # All the workers are writing to this at the same time so need to lock it
+        self._lock = threading.Lock()
 
     def add_record(self, city, date, temp):
-        city_info = self._data.get(city)
-        if city_info is None:
-            city_info = {'records': [], 'temp_sum': 0.0, 'lock': threading.Lock()}
-            self._data[city] = city_info
-
-        with city_info['lock']:
-            city_info['records'].append((date, temp))
-            city_info['temp_sum'] += temp
+        """Add a single (date, temp) pair to the specified city."""
+        with self._lock:
+            # Check if city exists, if not create it
+            if city not in self._city_data:
+                self._city_data[city] = {'records': [], 'total_temp': 0.0}
+            
+            self._city_data[city]['records'].append((date, temp))
+            self._city_data[city]['total_temp'] += temp
 
     def get_temp_details(self, city):
-        city_info = self._data.get(city)
-        if not city_info:
-            return 0.0
-        with city_info['lock']:
-            records = city_info['records']
-            if not records:
+        with self._lock:
+            if city not in self._city_data:
                 return 0.0
-            return city_info['temp_sum'] / len(records)
+            
+            city_info = self._city_data[city]
+            num_records = len(city_info['records'])
+            
+            if num_records == 0:
+                return 0.0
+            
+            # Calculate average
+            avg_temp = city_info['total_temp'] / num_records
+            return avg_temp
 
 
 # ---------------------------------------------------------------------------
@@ -160,40 +175,51 @@ def main():
 
     records = RECORDS_TO_RETRIEVE
 
-    command_queue = queue.Queue(maxsize=10)
-    data_queue = queue.Queue(maxsize=10)
+    # Create the queues
+    # Queue between main thread and request threads.
+    request_queue = queue.Queue(maxsize=10)
+    # Queue between request threads and worker threads.
+    response_queue = queue.Queue(maxsize=10)
+    
+    # print(f'Starting {REQUEST_THREAD_COUNT} request threads and {WORKER_THREAD_COUNT} workers')
 
-    workers = [Worker(f'Worker-{i+1}', data_queue, noaa) for i in range(WORKERS)]
+    workers = [Worker(f'Worker-{i+1}', response_queue, noaa) for i in range(WORKER_THREAD_COUNT)]
     for worker in workers:
         worker.start()
 
-    threads = []
-    for i in range(THREADS):
+    request_threads = []
+    for i in range(REQUEST_THREAD_COUNT):
         thread = threading.Thread(
             target=retrieve_weather_data,
-            args=(command_queue, data_queue),
+            args=(request_queue, response_queue),
             name=f'Request-{i+1}',
         )
         thread.start()
-        threads.append(thread)
+        request_threads.append(thread)
 
+    # Put all the work items in the queue
     for city in CITIES:
         total_records = min(records, city_details[city]['records'])
         for record_no in range(total_records):
-            command_queue.put((city, record_no))
+            request_queue.put((city, record_no))
 
-    for _ in range(len(threads)):
-        command_queue.put(None)
+    # Send stop signal to threads (None means stop)
+    # Need to send one for each thread so they all stop
+    for _ in range(len(request_threads)):
+        request_queue.put(None)
 
-    command_queue.join()
+    # Wait until every queued command has been processed.
+    request_queue.join()
 
-    for thread in threads:
+    for thread in request_threads:
         thread.join()
 
+    # Provide sentinels for the worker threads so they exit gracefully.
     for _ in range(len(workers)):
-        data_queue.put(None)
+        response_queue.put(None)
 
-    data_queue.join()
+    # Ensure all results have been incorporated before analyzing NOAA data.
+    response_queue.join()
 
     for worker in workers:
         worker.join()
@@ -212,4 +238,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
