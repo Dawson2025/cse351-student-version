@@ -34,9 +34,13 @@ RECORDS_TO_RETRIEVE = 5000  # Don't change
 def retrieve_weather_data(request_queue, response_queue):
     """Fetch records from the server and place them on the response queue."""
     
+    # Use a Session to reuse connections - found this in requests docs
+    # Program was too slow without it (over 60 seconds)
+    session = requests.Session()
+    
     while True:
         command = request_queue.get()
-        # Check for stop signal
+        # Check for stop signal (None means we're done)
         if command is None:
             request_queue.task_done()
             break
@@ -45,16 +49,26 @@ def retrieve_weather_data(request_queue, response_queue):
         
         # Get the weather data from server
         url = f'{TOP_API_URL}/record/{city}/{record_no}'
-        payload = get_data_from_server(url)
+        try:
+            response = session.get(url, timeout=10)
+            if response.status_code == 200:
+                payload = response.json()
+            else:
+                payload = None
+        except:
+            # If session fails, use the fallback function from common.py
+            payload = get_data_from_server(url)
         
         # Put the data on response queue for workers to process
         if payload is not None:
-            # Send tuple with city, date, and temp
             response_queue.put((payload['city'], payload['date'], payload['temp']))
         # else:
         #     print(f'Failed to get data for {city} record {record_no}')
 
         request_queue.task_done()
+    
+    # Clean up
+    session.close()
 
 
 # ---------------------------------------------------------------------------
@@ -62,21 +76,21 @@ class Worker(threading.Thread):
 
     def __init__(self, name, response_queue, noaa):
         super().__init__(name=name)
-        self._queue = response_queue
-        self._noaa = noaa
+        self.queue = response_queue
+        self.noaa = noaa
 
     def run(self):
         while True:
-            record = self._queue.get()
+            record = self.queue.get()
             if record is None:
-                self._queue.task_done()
+                self.queue.task_done()  # Important! Forgot this at first and program hung
                 break
             
             # Process the record
             city, date, temp = record
             # print(f'{self.name}: Processing {city} - {date}')  # Used this for debugging
-            self._noaa.add_record(city, date, temp)
-            self._queue.task_done()
+            self.noaa.add_record(city, date, temp)
+            self.queue.task_done()  # Let queue know we're done with this item
 
 
 # ---------------------------------------------------------------------------
@@ -86,30 +100,30 @@ class NOAA:
     def __init__(self):
         # Dictionary to store all city data
         # Each city will have a list of records and a running total of temps
-        self._city_data = {}
+        self.city_data = {}
         for city in CITIES:
-            self._city_data[city] = {'records': [], 'total_temp': 0.0}
+            self.city_data[city] = {'records': [], 'total_temp': 0.0}
         
         # Lock to protect the data (had issues with race conditions before adding this)
         # All the workers are writing to this at the same time so need to lock it
-        self._lock = threading.Lock()
+        self.lock = threading.Lock()
 
     def add_record(self, city, date, temp):
         """Add a single (date, temp) pair to the specified city."""
-        with self._lock:
+        with self.lock:
             # Check if city exists, if not create it
-            if city not in self._city_data:
-                self._city_data[city] = {'records': [], 'total_temp': 0.0}
+            if city not in self.city_data:
+                self.city_data[city] = {'records': [], 'total_temp': 0.0}
             
-            self._city_data[city]['records'].append((date, temp))
-            self._city_data[city]['total_temp'] += temp
+            self.city_data[city]['records'].append((date, temp))
+            self.city_data[city]['total_temp'] += temp
 
     def get_temp_details(self, city):
-        with self._lock:
-            if city not in self._city_data:
+        with self.lock:
+            if city not in self.city_data:
                 return 0.0
             
-            city_info = self._city_data[city]
+            city_info = self.city_data[city]
             num_records = len(city_info['records'])
             
             if num_records == 0:
@@ -183,10 +197,14 @@ def main():
     
     # print(f'Starting {REQUEST_THREAD_COUNT} request threads and {WORKER_THREAD_COUNT} workers')
 
-    workers = [Worker(f'Worker-{i+1}', response_queue, noaa) for i in range(WORKER_THREAD_COUNT)]
-    for worker in workers:
+    # Create and start worker threads
+    workers = []
+    for i in range(WORKER_THREAD_COUNT):
+        worker = Worker(f'Worker-{i+1}', response_queue, noaa)
+        workers.append(worker)
         worker.start()
 
+    # Create and start request threads
     request_threads = []
     for i in range(REQUEST_THREAD_COUNT):
         thread = threading.Thread(
@@ -204,23 +222,27 @@ def main():
             request_queue.put((city, record_no))
 
     # Send stop signal to threads (None means stop)
-    # Need to send one for each thread so they all stop
+    # Need to send one None for each thread so they all stop
+    # This is the "sentinel" pattern from the lesson
     for _ in range(len(request_threads)):
         request_queue.put(None)
 
     # Wait until every queued command has been processed.
     request_queue.join()
 
+    # Wait for all request threads to finish
     for thread in request_threads:
         thread.join()
 
-    # Provide sentinels for the worker threads so they exit gracefully.
+    # Now send stop signals to the worker threads
+    # Again, one None for each worker
     for _ in range(len(workers)):
         response_queue.put(None)
 
-    # Ensure all results have been incorporated before analyzing NOAA data.
+    # Make sure all workers processed everything
     response_queue.join()
 
+    # Wait for all workers to finish
     for worker in workers:
         worker.join()
 
