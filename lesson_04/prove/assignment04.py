@@ -98,37 +98,48 @@ class NOAA:
     """Accumulator for per-city temperature data."""
 
     def __init__(self):
-        # Dictionary to store all city data
-        # Each city will have a list of records and a running total of temps
+        # Dictionary to store all city data along with a lock for each city
         self.city_data = {}
         for city in CITIES:
-            self.city_data[city] = {'records': [], 'total_temp': 0.0}
-        
-        # Lock to protect the data (had issues with race conditions before adding this)
-        # All the workers are writing to this at the same time so need to lock it
-        self.lock = threading.Lock()
+            self.city_data[city] = {
+                'records': [],
+                'total_temp': 0.0,
+                'lock': threading.Lock(),
+            }
+
+        # Separate lock to guard the dictionary if a new city shows up unexpectedly
+        self._city_dict_lock = threading.Lock()
 
     def add_record(self, city, date, temp):
         """Add a single (date, temp) pair to the specified city."""
-        with self.lock:
-            # Check if city exists, if not create it
-            if city not in self.city_data:
-                self.city_data[city] = {'records': [], 'total_temp': 0.0}
-            
-            self.city_data[city]['records'].append((date, temp))
-            self.city_data[city]['total_temp'] += temp
+        city_info = self.city_data.get(city)
+        if city_info is None:
+            # This should not happen often, but handle it anyway
+            with self._city_dict_lock:
+                city_info = self.city_data.get(city)
+                if city_info is None:
+                    city_info = {
+                        'records': [],
+                        'total_temp': 0.0,
+                        'lock': threading.Lock(),
+                    }
+                    self.city_data[city] = city_info
+
+        # Use the per-city lock so different cities can update in parallel
+        with city_info['lock']:
+            city_info['records'].append((date, temp))
+            city_info['total_temp'] += temp
 
     def get_temp_details(self, city):
-        with self.lock:
-            if city not in self.city_data:
-                return 0.0
-            
-            city_info = self.city_data[city]
+        city_info = self.city_data.get(city)
+        if city_info is None:
+            return 0.0
+
+        with city_info['lock']:
             num_records = len(city_info['records'])
-            
             if num_records == 0:
                 return 0.0
-            
+
             # Calculate average
             avg_temp = city_info['total_temp'] / num_records
             return avg_temp
