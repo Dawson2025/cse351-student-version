@@ -1,0 +1,32 @@
+[1mdiff --git a/lesson_04/prove/assignment04.py b/lesson_04/prove/assignment04.py[m
+[1mindex 5585647..2aca5e7 100644[m
+[1m--- a/lesson_04/prove/assignment04.py[m
+[1m+++ b/lesson_04/prove/assignment04.py[m
+[36m@@ -36,7 +36,14 @@[m [mdef retrieve_weather_data(request_queue, response_queue):[m
+     [m
+     # Use a Session to reuse connections - found this in requests docs[m
+     # Program was too slow without it (over 60 seconds)[m
+[32m+[m[32m    # Increase connection pool size to handle more concurrent requests[m
+     session = requests.Session()[m
+[32m+[m[32m    adapter = requests.adapters.HTTPAdapter([m
+[32m+[m[32m        pool_connections=100,[m
+[32m+[m[32m        pool_maxsize=100,[m
+[32m+[m[32m        max_retries=0[m
+[32m+[m[32m    )[m
+[32m+[m[32m    session.mount('http://', adapter)[m
+     [m
+     while True:[m
+         command = request_queue.get()[m
+[36m@@ -202,9 +209,10 @@[m [mdef main():[m
+ [m
+     # Create the queues[m
+     # Queue between main thread and request threads.[m
+[31m-    request_queue = queue.Queue(maxsize=10)[m
+[32m+[m[32m    # Increased maxsize to allow more outstanding requests for better concurrency[m
+[32m+[m[32m    request_queue = queue.Queue(maxsize=500)[m
+     # Queue between request threads and worker threads.[m
+[31m-    response_queue = queue.Queue(maxsize=10)[m
+[32m+[m[32m    response_queue = queue.Queue(maxsize=500)[m
+     [m
+     # print(f'Starting {REQUEST_THREAD_COUNT} request threads and {WORKER_THREAD_COUNT} workers')[m
+ [m
