@@ -36,7 +36,14 @@ def retrieve_weather_data(request_queue, response_queue):
     
     # Use a Session to reuse connections - found this in requests docs
     # Program was too slow without it (over 60 seconds)
+    # Increase connection pool size to handle more concurrent requests
     session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(
+        pool_connections=100,
+        pool_maxsize=100,
+        max_retries=0
+    )
+    session.mount('http://', adapter)
     
     while True:
         command = request_queue.get()
@@ -202,9 +209,10 @@ def main():
 
     # Create the queues
     # Queue between main thread and request threads.
-    request_queue = queue.Queue(maxsize=10)
+    # Increased maxsize to allow more outstanding requests for better concurrency
+    request_queue = queue.Queue(maxsize=500)
     # Queue between request threads and worker threads.
-    response_queue = queue.Queue(maxsize=10)
+    response_queue = queue.Queue(maxsize=500)
     
     # print(f'Starting {REQUEST_THREAD_COUNT} request threads and {WORKER_THREAD_COUNT} workers')
 
