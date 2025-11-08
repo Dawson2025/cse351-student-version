@@ -30,13 +30,39 @@ speed = SLOW_SPEED
 
 # TODO: Add any functions needed here.
 
+
+def _depth_first_search(maze, row, col, path, visited):
+    """Recursive helper that performs a DFS through the maze."""
+
+    if not maze.can_move_here(row, col):
+        return False
+
+    maze.move(row, col, COLOR)
+    visited.add((row, col))
+    path.append((row, col))
+
+    if maze.at_end(row, col):
+        return True
+
+    for next_row, next_col in maze.get_possible_moves(row, col):
+        if (next_row, next_col) in visited:
+            continue
+        if _depth_first_search(maze, next_row, next_col, path, visited):
+            return True
+
+    path.pop()
+    maze.restore(row, col)
+    return False
+
+
 def solve_path(maze):
     """ Solve the maze and return the path found between the start and end positions.  
         The path is a list of positions, (x, y) """
+    start_row, start_col = maze.get_start_pos()
     path = []
-    # TODO: Solve the maze recursively while tracking the correct path.
+    visited = set()
 
-    # Hint: You can create an inner function to do the recursion
+    _depth_first_search(maze, start_row, start_col, path, visited)
 
     return path
 

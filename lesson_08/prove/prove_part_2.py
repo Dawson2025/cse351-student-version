@@ -21,11 +21,11 @@ position:
 
 What would be your strategy?
 
-<Answer here>
+While exploring, keep a dictionary that maps each visited cell to the parent cell that discovered it. When a thread reaches the exit, use that dictionary to walk backwards from the exit to the start and draw the path.
 
 Why would it work?
 
-<Answer here>
+Every cell is discovered exactly once in this search, so the parent dictionary forms a tree rooted at the start. Following parent pointers from the exit inevitably leads back to the start, giving the path in reverse order without needing to revisit cells.
 
 """
 
@@ -68,6 +68,24 @@ thread_count = 0
 stop = False
 speed = SLOW_SPEED
 
+visited_positions = set()
+visited_lock = threading.Lock()
+thread_lock = threading.Lock()
+
+
+def _register_thread():
+    global thread_count
+    with thread_lock:
+        thread_count += 1
+
+
+def _claim_position(position):
+    with visited_lock:
+        if position in visited_positions:
+            return False
+        visited_positions.add(position)
+        return True
+
 def get_color():
     """ Returns a different color when called """
     global current_color_index
@@ -81,11 +99,65 @@ def get_color():
 # TODO: Add any function(s) you need, if any, here.
 
 
+def _explore_branch(maze, row, col, color, already_claimed=False):
+    global stop
+
+    if stop:
+        return
+
+    if not already_claimed:
+        if not _claim_position((row, col)):
+            return
+
+    maze.move(row, col, color)
+
+    if maze.at_end(row, col):
+        stop = True
+        return
+
+    child_threads = []
+    moves = maze.get_possible_moves(row, col)
+    for idx, (next_row, next_col) in enumerate(moves):
+        if stop:
+            break
+        if not _claim_position((next_row, next_col)):
+            continue
+
+        if idx == 0:
+            _explore_branch(maze, next_row, next_col, color, already_claimed=True)
+        else:
+            branch_color = get_color()
+            thread = threading.Thread(
+                target=_explore_branch,
+                args=(maze, next_row, next_col, branch_color, True),
+            )
+            _register_thread()
+            child_threads.append(thread)
+            thread.start()
+
+    for thread in child_threads:
+        thread.join()
+
+
 def solve_find_end(maze):
     """ Finds the end position using threads. Nothing is returned. """
     # When one of the threads finds the end position, stop all of them.
-    global stop
+    global stop, visited_positions, current_color_index, thread_count
     stop = False
+    visited_positions = set()
+    current_color_index = 0
+    thread_count = 0
+
+    start_row, start_col = maze.get_start_pos()
+    initial_color = get_color()
+
+    def root_runner():
+        _explore_branch(maze, start_row, start_col, initial_color)
+
+    root_thread = threading.Thread(target=root_runner)
+    _register_thread()
+    root_thread.start()
+    root_thread.join()
 
 
 
