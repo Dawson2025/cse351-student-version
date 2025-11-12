@@ -60,13 +60,13 @@ COLORS = (
     (128,114,250)
 )
 SLOW_SPEED = 100
-FAST_SPEED = 0
+FAST_SPEED = 0  # 0 = instant, no delay
 
 # Globals
 current_color_index = 0
 thread_count = 0
 stop = False
-speed = SLOW_SPEED
+speed = FAST_SPEED  # Start with fast speed for automated testing
 
 visited_positions = set()
 visited_lock = threading.Lock()
@@ -115,17 +115,24 @@ def _explore_branch(maze, row, col, color, already_claimed=False):
         stop = True
         return
 
-    child_threads = []
+    # Get all possible moves and claim them
     moves = maze.get_possible_moves(row, col)
-    for idx, (next_row, next_col) in enumerate(moves):
+    unclaimed_moves = []
+    for next_row, next_col in moves:
         if stop:
-            break
-        if not _claim_position((next_row, next_col)):
-            continue
-
+            return
+        if _claim_position((next_row, next_col)):
+            unclaimed_moves.append((next_row, next_col))
+    
+    # Create and start threads for all paths except the first one
+    # This ensures threads explore in parallel
+    child_threads = []
+    for idx, (next_row, next_col) in enumerate(unclaimed_moves):
         if idx == 0:
-            _explore_branch(maze, next_row, next_col, color, already_claimed=True)
+            # Current thread will explore this path - save it for last
+            continue
         else:
+            # Create new thread for this path
             branch_color = get_color()
             thread = threading.Thread(
                 target=_explore_branch,
@@ -134,7 +141,13 @@ def _explore_branch(maze, row, col, color, already_claimed=False):
             _register_thread()
             child_threads.append(thread)
             thread.start()
-
+    
+    # Now explore the first path with the current thread
+    if unclaimed_moves and not stop:
+        next_row, next_col = unclaimed_moves[0]
+        _explore_branch(maze, next_row, next_col, color, already_claimed=True)
+    
+    # Wait for all child threads to complete
     for thread in child_threads:
         thread.join()
 
@@ -182,7 +195,7 @@ def find_end(log, filename, delay):
     done = False
     while not done:
         if screen.play_commands(speed): 
-            key = cv2.waitKey(0)
+            key = cv2.waitKey(1)
             if key == ord('1'):
                 speed = SLOW_SPEED
             elif key == ord('2'):

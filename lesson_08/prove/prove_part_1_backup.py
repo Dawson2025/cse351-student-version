@@ -26,7 +26,7 @@ SCREEN_SIZE = 800
 COLOR = (0, 0, 255)
 SLOW_SPEED = 100
 FAST_SPEED = 1
-speed = FAST_SPEED  # Start with fast speed for automated testing
+speed = SLOW_SPEED
 
 # TODO: Add any functions needed here.
 
@@ -85,7 +85,7 @@ def get_path(log, filename):
     done = False
     while not done:
         if screen.play_commands(speed): 
-            key = cv2.waitKey(1)
+            key = cv2.waitKey(0)
             if key == ord('1'):
                 speed = SLOW_SPEED
             elif key == ord('2'):
