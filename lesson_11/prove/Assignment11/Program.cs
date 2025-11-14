@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace assignment11;
 
@@ -6,13 +8,14 @@ public class Assignment11
 {
     private const long START_NUMBER = 10_000_000_000;
     private const int RANGE_COUNT = 1_000_000;
+    private const int DEFAULT_WORKER_COUNT = 10;
 
     private static bool IsPrime(long n)
     {
         if (n <= 3) return n > 1;
         if (n % 2 == 0 || n % 3 == 0) return false;
 
-        for (long i = 5; i * i <= n; i = i + 6)
+        for (long i = 5; i * i <= n; i += 6)
         {
             if (n % i == 0 || n % (i + 2) == 0)
                 return false;
@@ -22,33 +25,71 @@ public class Assignment11
 
     public static void Main(string[] args)
     {
-        // Use local variables for counting since we are in a single thread.
-        int numbersProcessed = 0;
-        int primeCount = 0;
+        var workerCount = DEFAULT_WORKER_COUNT;
+        if (args.Length > 0 && int.TryParse(args[0], out var parsed) && parsed > 0)
+        {
+            workerCount = parsed;
+        }
+
+        var numbersProcessed = 0;
+        var primeCount = 0;
 
         Console.WriteLine("Prime numbers found:");
 
+        using var numberQueue = new BlockingCollection<long>(new ConcurrentQueue<long>());
+        var consoleLock = new object();
         var stopwatch = Stopwatch.StartNew();
-        
-        // A single for-loop to check every number sequentially.
-        for (long i = START_NUMBER; i < START_NUMBER + RANGE_COUNT; i++)
+
+        var workers = new List<Thread>(workerCount);
+
+        void Worker()
         {
-            numbersProcessed++;
-            if (IsPrime(i))
+            foreach (var value in numberQueue.GetConsumingEnumerable())
             {
-                primeCount++;
-                Console.Write($"{i}, ");
+                Interlocked.Increment(ref numbersProcessed);
+
+                if (!IsPrime(value))
+                {
+                    continue;
+                }
+
+                Interlocked.Increment(ref primeCount);
+                lock (consoleLock)
+                {
+                    Console.Write($"{value}, ");
+                }
             }
+        }
+
+        for (var i = 0; i < workerCount; i++)
+        {
+            var thread = new Thread(Worker)
+            {
+                IsBackground = true
+            };
+            workers.Add(thread);
+            thread.Start();
+        }
+
+        for (long number = START_NUMBER; number < START_NUMBER + RANGE_COUNT; number++)
+        {
+            numberQueue.Add(number);
+        }
+
+        numberQueue.CompleteAdding();
+
+        foreach (var worker in workers)
+        {
+            worker.Join();
         }
 
         stopwatch.Stop();
 
-        Console.WriteLine(); // New line after all primes are printed
+        Console.WriteLine();
         Console.WriteLine();
 
-        // Should find 43427 primes for range_count = 1000000
         Console.WriteLine($"Numbers processed = {numbersProcessed}");
         Console.WriteLine($"Primes found      = {primeCount}");
-        Console.WriteLine($"Total time        = {stopwatch.Elapsed}");        
+        Console.WriteLine($"Total time        = {stopwatch.Elapsed}");
     }
 }
