@@ -10,7 +10,7 @@ namespace Assignment14;
 public static class Solve
 {
     private static readonly HttpClient HttpClient;
-    private static readonly SemaphoreSlim HttpSemaphore = new(60);
+    private static readonly SemaphoreSlim HttpSemaphore = new(80);
     public const string TopApiUrl = "http://127.0.0.1:8123";
 
     static Solve()
@@ -75,6 +75,7 @@ public static class Solve
 
         var visitedFamilies = new ConcurrentDictionary<long, bool>();
         var personCache = new ConcurrentDictionary<long, Task<Person?>>();
+        var familyCache = new ConcurrentDictionary<long, Task<Family?>>();
         visitedFamilies.TryAdd(familyId, true);
 
         var stack = new ConcurrentStack<long>();
@@ -109,7 +110,7 @@ public static class Solve
                             continue;
                         }
 
-                        var parents = await ProcessFamilyAsync(currentId, tree, personCache);
+                        var parents = await ProcessFamilyAsync(currentId, tree, personCache, familyCache);
 
                         foreach (var parentId in parents)
                         {
@@ -160,6 +161,7 @@ public static class Solve
 
         var visitedFamilies = new ConcurrentDictionary<long, bool>();
         var personCache = new ConcurrentDictionary<long, Task<Person?>>();
+        var familyCache = new ConcurrentDictionary<long, Task<Family?>>();
         visitedFamilies.TryAdd(famid, true);
 
         var queue = new ConcurrentQueue<long>();
@@ -194,7 +196,7 @@ public static class Solve
                             continue;
                         }
 
-                        var parents = await ProcessFamilyAsync(familyId, tree, personCache);
+                        var parents = await ProcessFamilyAsync(familyId, tree, personCache, familyCache);
 
                         foreach (var parentId in parents)
                         {
@@ -235,7 +237,7 @@ public static class Solve
         return true;
     }
 
-    private static async Task<List<long>> ProcessFamilyAsync(long familyId, Tree tree, ConcurrentDictionary<long, Task<Person?>> personCache)
+    private static async Task<List<long>> ProcessFamilyAsync(long familyId, Tree tree, ConcurrentDictionary<long, Task<Person?>> personCache, ConcurrentDictionary<long, Task<Family?>> familyCache)
     {
         var parentIds = new List<long>();
         if (familyId == 0)
@@ -243,7 +245,8 @@ public static class Solve
             return parentIds;
         }
 
-        var family = await FetchFamilyAsync(familyId);
+        var familyTask = familyCache.GetOrAdd(familyId, _ => FetchFamilyAsync(familyId));
+        var family = await familyTask;
         if (family == null)
         {
             return parentIds;
@@ -292,6 +295,10 @@ public static class Solve
                 if (!tree.PersonExists(person.Id))
                 {
                     tree.AddPerson(person);
+                    if (person.ParentId != 0)
+                    {
+                        familyCache.GetOrAdd(person.ParentId, _ => FetchFamilyAsync(person.ParentId));
+                    }
                 }
                 personCache.TryRemove(person.Id, out _);
 
