@@ -10,6 +10,7 @@ namespace Assignment14;
 public static class Solve
 {
     private static readonly HttpClient HttpClient;
+    private static readonly SemaphoreSlim HttpSemaphore = new(60);
     public const string TopApiUrl = "http://127.0.0.1:8123";
 
     static Solve()
@@ -31,6 +32,7 @@ public static class Solve
     // This function retrieves JSON from the server
     public static async Task<JObject?> GetDataFromServerAsync(string url)
     {
+        await HttpSemaphore.WaitAsync();
         try
         {
             var jsonString = await HttpClient.GetStringAsync(url);
@@ -40,6 +42,10 @@ public static class Solve
         {
             Console.WriteLine($"Error fetching data from {url}: {e.Message}");
             return null;
+        }
+        finally
+        {
+            HttpSemaphore.Release();
         }
     }
 
