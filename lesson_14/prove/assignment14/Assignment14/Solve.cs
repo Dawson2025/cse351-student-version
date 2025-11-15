@@ -10,7 +10,7 @@ namespace Assignment14;
 public static class Solve
 {
     private static readonly HttpClient HttpClient;
-    private static readonly SemaphoreSlim HttpSemaphore = new(80);
+    private static readonly SemaphoreSlim HttpSemaphore = new(50);
     public const string TopApiUrl = "http://127.0.0.1:8123";
 
     static Solve()
