@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,8 +8,8 @@ namespace Assignment14;
 
 public class Tree
 {
-    private readonly Dictionary<long, Person> _people;
-    private readonly Dictionary<long, Family> _families;
+    private readonly ConcurrentDictionary<long, Person> _people;
+    private readonly ConcurrentDictionary<long, Family> _families;
     private readonly long _startFamilyId;
 
     public int PersonCount => _people.Count;
@@ -16,32 +17,24 @@ public class Tree
 
     public Tree(long startFamilyId)
     {
-        _people = new Dictionary<long, Person>();
-        _families = new Dictionary<long, Family>();
+        _people = new ConcurrentDictionary<long, Person>();
+        _families = new ConcurrentDictionary<long, Family>();
         _startFamilyId = startFamilyId;
     }
 
     public void AddPerson(Person person)
     {
-        if (_people.ContainsKey(person.Id))
+        if (!_people.TryAdd(person.Id, person))
         {
             Console.WriteLine($"ERROR: Person with ID = {person.Id} already exists in the tree.");
-        }
-        else
-        {
-            _people[person.Id] = person;
         }
     }
 
     public void AddFamily(Family family)
     {
-        if (_families.ContainsKey(family.Id))
+        if (!_families.TryAdd(family.Id, family))
         {
             Console.WriteLine($"ERROR: Family with ID = {family.Id} already exists in the tree.");
-        }
-        else
-        {
-            _families[family.Id] = family;
         }
     }
 

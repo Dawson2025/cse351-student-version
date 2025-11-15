@@ -48,14 +48,36 @@ class Program
     static async Task Main()
     {        
         Logger.Configure(minimumLevel: LogLevel.Debug, logToFile: true, filePath: "../../../assignment.log");
+        Logger.LogToConsole = false;
         
         var data = await Solve.GetDataFromServerAsync($"{Solve.TopApiUrl}");
         long start_id = (long)data["start_family_id"];
         
+        var runFileCandidates = new[]
+        {
+            "../../../runs.txt",
+            "runs.txt"
+        };
+
+        string? runFilePath = null;
+        foreach (var candidate in runFileCandidates)
+        {
+            if (File.Exists(candidate))
+            {
+                runFilePath = candidate;
+                break;
+            }
+        }
+
+        if (runFilePath == null)
+        {
+            Console.Error.WriteLine("Error: runs.txt not found.");
+            return;
+        }
+
         try
         {
-            // File.ReadLines reads the file line by line without loading it all into memory.
-            foreach (string line in File.ReadLines("../../../runs.txt"))
+            foreach (string line in File.ReadLines(runFilePath))
             {
                 string[] parts = line.Split(',');
 

@@ -24,7 +24,8 @@ public static class Logger
     public static bool LogToConsole { get; set; } = true;
     public static bool LogToFile { get; private set; } = false;
 
-    private static readonly object _fileLock = new object(); // For thread-safe file writing
+    private static readonly object _fileLock = new object();
+    private static StreamWriter? _logWriter;
 
     public static void Configure(LogLevel minimumLevel = LogLevel.Info, bool logToFile = false, string? filePath = null)
     {
@@ -76,12 +77,29 @@ public static class Logger
                 }
                 // --- END CHANGE ---
 
+                try
+                {
+                    _logWriter?.Dispose();
+                    _logWriter = new StreamWriter(LogFilePath, append: false, Encoding.UTF8)
+                    {
+                        AutoFlush = true
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[LOGGER_ERROR] Failed to open log file '{LogFilePath}': {ex.Message}");
+                    LogToFile = false;
+                    _logWriter = null;
+                }
+
                 Console.WriteLine($"[LOGGER_CONFIG] File logging enabled. Path: {LogFilePath}");
             }
         }
         else
         {
             LogFilePath = null;
+            _logWriter?.Dispose();
+            _logWriter = null;
             Console.WriteLine("[LOGGER_CONFIG] File logging disabled.");
         }
 
@@ -203,11 +221,11 @@ public static class Logger
                 Console.ForegroundColor = originalColor; // Reset color
             }
 
-            if (LogToFile && !string.IsNullOrEmpty(LogFilePath))
+            if (LogToFile && _logWriter != null)
             {
                 try
                 {
-                    File.AppendAllText(LogFilePath, formattedMessage + Environment.NewLine);
+                    _logWriter.WriteLine(formattedMessage);
                 }
                 catch (Exception ex)
                 {
