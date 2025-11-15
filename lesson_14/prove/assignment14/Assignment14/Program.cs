@@ -3,6 +3,7 @@
  * Assignment: 14
  */
 using System;
+using System.IO;
 using Assignment14;
 using Newtonsoft.Json.Linq;
 
@@ -47,8 +48,11 @@ class Program
     
     static async Task Main()
     {        
-        Logger.Configure(minimumLevel: LogLevel.Debug, logToFile: true, filePath: "../../../assignment.log");
+        var projectDir = Directory.GetCurrentDirectory();
+        var logPath = Path.GetFullPath(Path.Combine(projectDir, "..", "..", "logs", "assignment.log"));
+        Logger.Configure(minimumLevel: LogLevel.Debug, logToFile: true, filePath: logPath);
         Logger.LogToConsole = false;
+        Logger.Write($"HTTP gate size (FS_HTTP_GATE): {Solve.HttpGateSize}");
         
         var data = await Solve.GetDataFromServerAsync($"{Solve.TopApiUrl}");
         long start_id = (long)data["start_family_id"];

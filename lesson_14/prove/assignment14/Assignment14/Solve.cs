@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
@@ -9,8 +10,10 @@ namespace Assignment14;
 
 public static class Solve
 {
+    private const int DefaultHttpGate = 45;
+    private static readonly int HttpGateSlots = ResolveHttpGate();
     private static readonly HttpClient HttpClient;
-    private static readonly SemaphoreSlim HttpSemaphore = new(45);
+    private static readonly SemaphoreSlim HttpSemaphore = new(HttpGateSlots);
     public const string TopApiUrl = "http://127.0.0.1:8123";
 
     static Solve()
@@ -27,6 +30,19 @@ public static class Solve
             Timeout = TimeSpan.FromSeconds(180),
             DefaultRequestVersion = HttpVersion.Version11
         };
+    }
+
+    public static int HttpGateSize => HttpGateSlots;
+
+    private static int ResolveHttpGate()
+    {
+        var envValue = Environment.GetEnvironmentVariable("FS_HTTP_GATE");
+        if (!string.IsNullOrWhiteSpace(envValue) && int.TryParse(envValue, out var parsed))
+        {
+            return Math.Clamp(parsed, 1, 512);
+        }
+
+        return DefaultHttpGate;
     }
 
     // This function retrieves JSON from the server

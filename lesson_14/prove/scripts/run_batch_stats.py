@@ -9,8 +9,9 @@ import subprocess
 PROVE_DIR = Path(__file__).resolve().parents[1]
 LESSON_DIR = PROVE_DIR.parent
 ASSIGNMENT_DIR = PROVE_DIR / "assignment14" / "Assignment14"
-DEFAULT_LOG = LESSON_DIR / "assignment.log"
+DEFAULT_LOG = PROVE_DIR / "logs" / "assignment.log"
 HISTORY_FILE = PROVE_DIR / "run_history.json"
+DEFAULT_GATE = 45
 
 def parse_latest(log_path: Path):
     lines = log_path.read_text().splitlines()
@@ -33,9 +34,11 @@ def load_history():
 def save_history(history):
     HISTORY_FILE.write_text(json.dumps(history, indent=2))
 
-def run_once():
+def run_once(gate_override: int | None):
     env = os.environ.copy()
     env["PATH"] = f"{env['HOME']}/.dotnet:" + env["PATH"]
+    if gate_override is not None:
+        env["FS_HTTP_GATE"] = str(gate_override)
     subprocess.run(["dotnet", "run"], cwd=str(ASSIGNMENT_DIR), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, env=env)
 
 def summarize(history):
@@ -52,6 +55,7 @@ def main():
     parser.add_argument("--skip-run", action="store_true", help="Only summarize existing history without running new iterations")
     parser.add_argument("--reset-history", action="store_true", help="Clear run_history.json before running")
     parser.add_argument("--milestone", type=int, default=1, help="Milestone number for reporting")
+    parser.add_argument("--gate", type=int, help="Override FS_HTTP_GATE (HTTP semaphore slots) for each run")
     args = parser.parse_args()
 
     if args.reset_history:
@@ -60,10 +64,15 @@ def main():
     history = load_history()
 
     if not args.skip_run:
+        if args.gate is not None:
+            gate_value = args.gate
+        else:
+            env_gate = os.environ.get("FS_HTTP_GATE")
+            gate_value = int(env_gate) if env_gate and env_gate.isdigit() else DEFAULT_GATE
         for _ in range(args.iterations):
-            run_once()
+            run_once(args.gate)
             dfs, bfs = parse_latest(args.log)
-            history.append({"dfs": dfs, "bfs": bfs})
+            history.append({"dfs": dfs, "bfs": bfs, "gate": gate_value})
         save_history(history)
 
     total, dfs_under, bfs_under, both_under = summarize(history)
@@ -80,7 +89,8 @@ def main():
         print("\nLatest runs:")
         start_idx = total - len(latest) + 1
         for offset, entry in enumerate(latest):
-            print(f"Run {start_idx + offset:3d}: DFS={entry['dfs']:6.3f}s, BFS={entry['bfs']:6.3f}s")
+            gate_descr = entry.get("gate", "?")
+            print(f"Run {start_idx + offset:3d}: DFS={entry['dfs']:6.3f}s, BFS={entry['bfs']:6.3f}s, gate={gate_descr}")
 
     # Print milestone-level recap for documentation
     print("\nMilestone Summary:")

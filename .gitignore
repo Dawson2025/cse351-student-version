@@ -8,6 +8,7 @@ _*
 __pycache__
 IN_CLASS_DEMOS/*
 logs/
+!lesson_14/prove/logs/.gitkeep
 tasks/
 data_files/
 faces/
@@ -64,6 +65,8 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+!lesson_14/prove/logs/
+!lesson_14/prove/logs/.gitkeep
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
