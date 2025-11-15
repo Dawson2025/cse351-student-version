@@ -85,9 +85,12 @@ def main():
     # Print milestone-level recap for documentation
     print("\nMilestone Summary:")
     print(f"- Runs logged this milestone: {total}")
-    print(f"- DFS < 10s: {dfs_under} ({dfs_under / total * 100:.1f}%)")
-    print(f"- BFS < 10s: {bfs_under} ({bfs_under / total * 100:.1f}%)")
-    print(f"- Both < 10s: {both_under} ({both_under / total * 100:.1f}%)")
+    if total:
+        print(f"- DFS < 10s: {dfs_under} ({dfs_under / total * 100:.1f}%)")
+        print(f"- BFS < 10s: {bfs_under} ({bfs_under / total * 100:.1f}%)")
+        print(f"- Both < 10s: {both_under} ({both_under / total * 100:.1f}%)")
+    else:
+        print("- No data yet")
 
 if __name__ == "__main__":
     main()
