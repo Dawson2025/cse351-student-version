@@ -108,7 +108,7 @@ public static class Solve
 
         Push(familyId);
 
-        var workerCount = Math.Max(4, Environment.ProcessorCount * 8);
+        var workerCount = Math.Max(4, Math.Min(64, Environment.ProcessorCount * 6));
         var workers = new List<Task>(workerCount);
 
         for (var i = 0; i < workerCount; i++)
@@ -194,7 +194,7 @@ public static class Solve
 
         Enqueue(famid);
 
-        var workerCount = Math.Max(4, Environment.ProcessorCount * 8);
+        var workerCount = Math.Max(4, Math.Min(64, Environment.ProcessorCount * 6));
         var workers = new List<Task>(workerCount);
 
         for (var i = 0; i < workerCount; i++)
@@ -308,12 +308,13 @@ public static class Solve
                     continue;
                 }
 
+                // Insert person once; prefetch parent family immediately so the queue sees it sooner.
                 if (!tree.PersonExists(person.Id))
                 {
                     tree.AddPerson(person);
                     if (person.ParentId != 0)
                     {
-                        familyCache.GetOrAdd(person.ParentId, _ => FetchFamilyAsync(person.ParentId));
+                        _ = familyCache.GetOrAdd(person.ParentId, _ => FetchFamilyAsync(person.ParentId));
                     }
                 }
                 personCache.TryRemove(person.Id, out _);
