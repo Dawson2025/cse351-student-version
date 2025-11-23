@@ -48,10 +48,10 @@ Describe how to speed up part 1
 
 Part 1 uses a recursive depth-first search with threading to speed up family tree retrieval.
 The key optimizations are:
-1. Parallelizing person data retrieval: For each family, we retrieve husband, wife, and all
-   children in parallel using threads, rather than sequentially. Since each request takes
+1. Concurrent person data retrieval: For each family, we retrieve husband, wife, and all
+   children concurrently using threads, rather than sequentially. Since each request takes
    0.25 seconds, this saves significant time when a family has multiple members.
-2. Parallelizing recursive calls: When recursing to get parents, we spawn two threads - one
+2. Concurrent recursive calls: When recursing to get parents, we spawn two threads - one
    for the husband's parents and one for the wife's parents. This allows both branches of
    the tree to be explored simultaneously.
 3. Thread synchronization: We use locks to ensure thread-safe access to the tree data
@@ -64,16 +64,16 @@ Describe how to speed up part 2
 
 Part 2 uses a breadth-first search with threading to retrieve the family tree level by level.
 The key optimizations are:
-1. Level-based parallelization: Process all families at the same generation level in parallel
+1. Level-based concurrency: Process all families at the same generation level concurrently
    using threads. This is more efficient than DFS for wide trees since all families at a
    level can be fetched simultaneously.
-2. Parallel person retrieval: Like Part 1, we fetch all people in a family (husband, wife,
-   children) in parallel using threads.
+2. Concurrent person retrieval: Like Part 1, we fetch all people in a family (husband, wife,
+   children) concurrently using threads.
 3. Queue-based approach: Use a queue to track which families to process next, allowing us to
    systematically process the tree level by level without recursion.
 4. Thread joining: Wait for all threads at a level to complete before moving to the next
    level, ensuring data consistency.
-BFS is often more efficient than DFS for this problem because it maximizes parallelism across
+BFS is often more efficient than DFS for this problem because it maximizes concurrency across
 the tree width rather than depth.
 
 
@@ -88,13 +88,13 @@ The implementation:
    waiting threads to proceed.
 3. Maintains BFS structure: The level-by-level processing remains the same, but thread
    creation is throttled by the semaphore.
-This approach balances parallelism with resource constraints, preventing server overload while
+This approach balances concurrency with resource constraints, preventing server overload while
 still achieving good performance.
 
 """
 from common import *  # Import common classes (Person, Family, Tree, get_data_from_server)
 import queue  # Import queue for potential use in BFS
-import threading  # Import threading for parallel execution
+import threading  # Import threading for concurrent execution
 
 # -----------------------------------------------------------------------------
 def depth_fs_pedigree(family_id, tree):
@@ -138,14 +138,14 @@ def depth_fs_pedigree(family_id, tree):
             person_ids.append(family_obj.get_wife())  # Add wife ID to list
         person_ids.extend(family_obj.get_children())  # Add all children IDs to list
 
-        # Fetch all people in parallel (KEY OPTIMIZATION #1)
+        # Fetch all people concurrently (KEY OPTIMIZATION #1)
         person_threads = []  # List to track all person-fetching threads
         people_data = {}  # Dictionary to store person data from all threads
 
         def fetch_person(person_id):
             """
             Fetch a single person's data from the server.
-            Runs in parallel with other person fetches.
+            Runs concurrently with other person fetches.
             """
             person_data = get_data_from_server(f'{TOP_API_URL}/person/{person_id}')  # Get person from API
             if person_data is not None:  # If server returned valid data
@@ -154,7 +154,7 @@ def depth_fs_pedigree(family_id, tree):
 
         for person_id in person_ids:  # For each person we need to fetch
             thread = threading.Thread(target=fetch_person, args=(person_id,))  # Create thread for this person
-            thread.start()  # Start thread to fetch person data in parallel
+            thread.start()  # Start thread to fetch person data concurrently
             person_threads.append(thread)  # Track thread for later joining
 
         # Wait for all person fetches to complete
@@ -174,11 +174,11 @@ def depth_fs_pedigree(family_id, tree):
             if parent_fam_id is not None and parent_fam_id not in parent_ids:  # If has parents and not already tracked
                 parent_ids.append(parent_fam_id)  # Add to list of families to process next
 
-        # Recursively process parent families in parallel (KEY OPTIMIZATION #2)
+        # Recursively process parent families concurrently (KEY OPTIMIZATION #2)
         parent_threads = []  # List to track recursive threads
         for parent_id in parent_ids:  # For each parent family to process
             thread = threading.Thread(target=process_family, args=(parent_id,))  # Create thread for recursive call
-            thread.start()  # Start thread to explore this branch in parallel
+            thread.start()  # Start thread to explore this branch concurrently
             parent_threads.append(thread)  # Track thread for joining
 
         # Wait for all recursive calls to complete
@@ -236,12 +236,12 @@ def breadth_fs_pedigree(family_id, tree):
                 person_ids.append(family_obj.get_wife())  # Add wife ID
             person_ids.extend(family_obj.get_children())  # Add all children IDs
 
-            # Fetch all people in parallel (reduces wait time significantly)
+            # Fetch all people concurrently (reduces wait time significantly)
             person_threads = []  # Track person-fetching threads
             people_data = {}  # Store fetched person data
 
             def fetch_person(person_id):
-                """Fetch one person's data in parallel."""
+                """Fetch one person's data concurrently."""
                 person_data = get_data_from_server(f'{TOP_API_URL}/person/{person_id}')  # Fetch person
                 if person_data is not None:  # If got valid data
                     with lock:  # Thread-safe write to shared dict
@@ -249,7 +249,7 @@ def breadth_fs_pedigree(family_id, tree):
 
             for person_id in person_ids:  # For each person to fetch
                 thread = threading.Thread(target=fetch_person, args=(person_id,))  # Create thread
-                thread.start()  # Start fetching in parallel
+                thread.start()  # Start fetching concurrently
                 person_threads.append(thread)  # Track for joining
 
             # Wait for all person fetches to finish
@@ -270,10 +270,10 @@ def breadth_fs_pedigree(family_id, tree):
                         if parent_fam_id not in next_level and not tree.does_family_exist(parent_fam_id):  # If not already queued or processed
                             next_level.append(parent_fam_id)  # Queue for next generation
 
-        # Process all families in current level in parallel (KEY OPTIMIZATION)
+        # Process all families in current level concurrently (KEY OPTIMIZATION - concurrent execution)
         for fam_id in current_level:  # For each family at this generation level
             thread = threading.Thread(target=process_family, args=(fam_id,))  # Create thread for this family
-            thread.start()  # Start processing in parallel with other families at this level
+            thread.start()  # Start processing concurrently with other families at this level
             level_threads.append(thread)  # Track for joining
 
         # Wait for all families in current level to be processed before moving to next level
@@ -337,7 +337,7 @@ def breadth_fs_pedigree_limit5(family_id, tree):
                 person_ids.append(family_obj.get_wife())  # Add wife
             person_ids.extend(family_obj.get_children())  # Add children
 
-            # Fetch all people in parallel (each fetch limited by semaphore)
+            # Fetch all people concurrently (each fetch limited by semaphore)
             person_threads = []  # Track person threads
             people_data = {}  # Store person data
 
@@ -371,7 +371,7 @@ def breadth_fs_pedigree_limit5(family_id, tree):
                         if parent_fam_id not in next_level and not tree.does_family_exist(parent_fam_id):  # Not queued or processed
                             next_level.append(parent_fam_id)  # Queue for next level
 
-        # Process all families in current level in parallel (API calls limited by semaphore)
+        # Process all families in current level concurrently (API calls limited by semaphore)
         for fam_id in current_level:  # For each family at this level
             thread = threading.Thread(target=process_family, args=(fam_id,))  # Create thread
             thread.start()  # Start (actual API calls limited by semaphore inside)
