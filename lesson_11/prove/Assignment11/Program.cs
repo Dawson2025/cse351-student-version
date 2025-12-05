@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -26,15 +27,26 @@ public class Assignment11
     public static void Main(string[] args)
     {
         var workerCount = DEFAULT_WORKER_COUNT;
-        if (args.Length > 0 && int.TryParse(args[0], out var parsed) && parsed > 0)
+        var quiet = false;
+
+        foreach (var arg in args)
         {
-            workerCount = parsed;
+            if (arg.Equals("--quiet", StringComparison.OrdinalIgnoreCase) || arg.Equals("-q", StringComparison.OrdinalIgnoreCase))
+            {
+                quiet = true;
+                continue;
+            }
+
+            if (int.TryParse(arg, out var parsed) && parsed > 0)
+            {
+                workerCount = parsed;
+            }
         }
 
         var numbersProcessed = 0;
         var primeCount = 0;
 
-        Console.WriteLine("Prime numbers found:");
+        Console.WriteLine(quiet ? "Prime search running (quiet mode)..." : "Prime numbers found:");
 
         using var numberQueue = new BlockingCollection<long>(new ConcurrentQueue<long>());
         var consoleLock = new object();
@@ -46,17 +58,21 @@ public class Assignment11
         {
             foreach (var value in numberQueue.GetConsumingEnumerable())
             {
+                var isPrime = IsPrime(value);
                 Interlocked.Increment(ref numbersProcessed);
 
-                if (!IsPrime(value))
+                if (!isPrime)
                 {
                     continue;
                 }
 
                 Interlocked.Increment(ref primeCount);
-                lock (consoleLock)
+                if (!quiet)
                 {
-                    Console.Write($"{value}, ");
+                    lock (consoleLock)
+                    {
+                        Console.Write($"{value}, ");
+                    }
                 }
             }
         }
